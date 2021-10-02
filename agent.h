@@ -101,13 +101,55 @@ public:
 	player(const std::string& args = "") : random_agent("name=dummy role=player " + args),
 		opcode({ 0, 1, 2, 3 }) {}
 
-	virtual action take_action(const board& before) {
+	action dummy_action(const board& before) {
 		std::shuffle(opcode.begin(), opcode.end(), engine);
 		for (int op : opcode) {
 			board::reward reward = board(before).slide(op);
 			if (reward != -1) return action::slide(op);
 		}
 		return action();
+	}
+
+	action greedy_score_action(const board& before) {
+		board::reward best_reward = -1;
+		int best_op;
+		for (int op : opcode) {
+			board::reward reward = board(before).slide(op);
+			if(reward > best_reward) {
+				best_op = op;
+				best_reward = reward;
+			}
+		}
+		if (best_reward != -1) return action::slide(best_op);
+		return action();
+	}
+
+	action greedy_pos_action(const board& before) {
+		board::reward best_reward = -1;
+		unsigned best_space = 17;
+		int best_op;
+		for (int op : opcode) {
+			board tmp(before);
+			board::reward reward = tmp.slide(op);
+			if(reward == -1)
+				continue;
+			unsigned space_left = tmp.space_left();
+			if(reward > best_reward || (reward == best_reward && space_left < best_space)) {
+				best_op = op;
+				best_reward = reward;
+				best_space = space_left;
+			}
+		}
+		if (best_reward != -1) return action::slide(best_op);
+		return action();
+	}
+
+	virtual action take_action(const board& before) {
+		if (property("name") == "greedy_score")
+			return greedy_score_action(before);
+		else if (property("name") == "greedy_pos")
+			return greedy_pos_action(before);
+		return dummy_action(before);
 	}
 
 private:
