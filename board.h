@@ -82,6 +82,21 @@ public:
 		default: return -1;
 		}
 	}
+	
+	static uint32_t fibb(unsigned index) {
+		if(index < 3)
+			return 1;
+		return fibb(index - 1) + fibb(index - 2);
+	}
+
+	unsigned space_left() {
+		unsigned space = 0;
+		for (int r = 0; r < 4; r++)
+			for (int c = 0; c < 4; c++)
+				if(!tile[r][c])
+					space++;
+		return space;
+	}
 
 	reward slide_left() {
 		board prev = *this;
@@ -94,9 +109,10 @@ public:
 				if (tile == 0) continue;
 				row[c] = 0;
 				if (hold) {
-					if (tile == hold) {
-						row[top++] = ++tile;
-						score += (1 << tile);
+					if (std::abs(tile - hold) == 1 || (tile == 1 && hold == 1)) {
+						tile = std::max(tile, hold) + 1;
+						row[top++] = tile;
+						score += fibb(tile);
 						hold = 0;
 					} else {
 						row[top++] = hold;
@@ -173,7 +189,7 @@ public:
 		out << "+------------------------+" << std::endl;
 		for (auto& row : b.tile) {
 			out << "|" << std::dec;
-			for (auto t : row) out << std::setw(6) << ((1 << t) & -2u);
+			for (auto t : row) out << std::setw(6) << fibb(t);
 			out << "|" << std::endl;
 		}
 		out << "+------------------------+" << std::endl;

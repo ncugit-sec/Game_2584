@@ -8,4 +8,4 @@ To judge a statistic file "stat.txt":
 $ ./2584-judge --load=stat.txt --check
 
 To judge a statistic file "stat.txt" under a given speed limit:
-$ ./2584-judge --load=stat.txt --check --judge="speed-threshold=100000"
+$ ./2584-judge --load=stat.txt --check --judge="speed-threshold=107413"
