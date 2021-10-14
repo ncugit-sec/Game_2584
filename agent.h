@@ -81,7 +81,7 @@ class player : public agent
 {
 
 public:
-	player(const std::string &args = "") : agent("name=TD alpha=0.0125 role=player " + args), alpha(0)
+	player(const std::string &args = "") : agent("name=TD alpha=0.125 role=player " + args), alpha(0)
 	{
 		if (meta.find("init") != meta.end())
 			init_weights(meta["init"]);
@@ -122,21 +122,64 @@ protected:
 	};
 
 	std::vector<step> history;
+	static const int indexCount = 17;
+	static const int tupleSize = 4;
+	static const int maxIndex = 25;
+	int indexes[indexCount][tupleSize] = {{0, 1, 2, 3}, {4, 5, 6, 7}, {8, 9, 10, 11}, {12, 13, 14, 15}, {0, 4, 8, 12}, {1, 5, 9, 13}, {2, 6, 10, 14}, {3, 7, 11, 15}, {0, 1, 4, 5}, {1, 2, 5, 6}, {2, 3, 6, 7}, {4, 5, 8, 9}, {4, 5, 9, 10}, {4, 5, 10, 11}, {8, 9, 12, 13}, {9, 10, 13, 14}, {10, 11, 14, 15}};
+
+	static float pow(int n, int p)
+	{
+		float base = 1;
+
+		for (int i = 0; i < p; i++)
+			base *= n;
+		return base;
+	}
+	int extract_feature(const board &after, int a)
+	{
+		int result = 0;
+		for (int i = 0; i < tupleSize; i++)
+		{
+			int tmp = after(indexes[a][i]);
+			if (tmp >= maxIndex)
+				tmp = maxIndex - 1;
+			result += tmp * pow(maxIndex, tupleSize - i - 1);
+		}
+		return result;
+	}
+
 	int extract_feature(const board &after, int a, int b, int c, int d)
 	{
-		return after(a) * 25 * 25 * 25 + after(b) * 25 * 25 + after(c) * 25 + after(d);
+		int result = 0;
+		for (int i = 0; i < tupleSize; i++)
+		{
+			int tmp = after(indexes[a][i]);
+			if (tmp >= maxIndex)
+				tmp = maxIndex - 1;
+			result += tmp * pow(maxIndex, tupleSize - i - 1);
+		}
+		return result;
 	}
-	float estimate_value(const board &after) 
+
+	int extract_feature(const board &after, int a, int b, int c, int d, int e, int f)
+	{
+		int result = 0;
+		for (int i = 0; i < tupleSize; i++)
+		{
+			int tmp = after(indexes[a][i]);
+			if (tmp >= maxIndex)
+				tmp = maxIndex - 1;
+			result += tmp * pow(maxIndex, tupleSize - i - 1);
+		}
+		return result;
+	}
+
+	float estimate_value(const board &after)
 	{
 		float value = 0;
-		value += net[0][extract_feature(after, 0, 1, 2, 3)];
-		value += net[1][extract_feature(after, 4, 5, 6, 7)];
-		value += net[2][extract_feature(after, 8, 9, 10, 11)];
-		value += net[3][extract_feature(after, 12, 13, 14, 15)];
-		value += net[4][extract_feature(after, 0, 4, 8, 12)];
-		value += net[5][extract_feature(after, 1, 5, 9, 13)];
-		value += net[6][extract_feature(after, 2, 6, 10, 14)];
-		value += net[7][extract_feature(after, 3, 7, 11, 15)];
+		for (int x = 0; x < indexCount; x++)
+			value += net[x][extract_feature(after, x)];
+
 		return value;
 	}
 
@@ -145,14 +188,8 @@ protected:
 		float current = estimate_value(after);
 		float error = target - current;
 		float adjust = alpha * error;
-		net[0][extract_feature(after, 0, 1, 2, 3)] += adjust;
-		net[1][extract_feature(after, 4, 5, 6, 7)] += adjust;
-		net[2][extract_feature(after, 8, 9, 10, 11)] += adjust;
-		net[3][extract_feature(after, 12, 13, 14, 15)] += adjust;
-		net[4][extract_feature(after, 0, 4, 8, 12)] += adjust;
-		net[5][extract_feature(after, 1, 5, 9, 13)] += adjust;
-		net[6][extract_feature(after, 2, 6, 10, 14)] += adjust;
-		net[7][extract_feature(after, 3, 7, 11, 15)] += adjust;
+		for (int x = 0; x < indexCount; x++)
+			net[x][extract_feature(after, x)] += adjust;
 	}
 
 	virtual action take_action(const board &before)
@@ -185,14 +222,8 @@ protected:
 
 	virtual void init_weights(const std::string &info)
 	{
-		net.emplace_back(25 * 25 * 25 * 25);
-		net.emplace_back(25 * 25 * 25 * 25);
-		net.emplace_back(25 * 25 * 25 * 25);
-		net.emplace_back(25 * 25 * 25 * 25);
-		net.emplace_back(25 * 25 * 25 * 25);
-		net.emplace_back(25 * 25 * 25 * 25);
-		net.emplace_back(25 * 25 * 25 * 25);
-		net.emplace_back(25 * 25 * 25 * 25);
+		for (int i = 0; i < indexCount; i++)
+			net.emplace_back(pow(maxIndex, tupleSize));
 	}
 	virtual void load_weights(const std::string &path)
 	{
@@ -257,55 +288,68 @@ private:
  * dummy player
  * select a legal action randomly
  */
-class dummy_player : public random_agent {
+class dummy_player : public random_agent
+{
 public:
-	dummy_player(const std::string& args = "") : random_agent("name=dummy role=player " + args),
-		opcode({ 0, 1, 2, 3 }) {}
+	dummy_player(const std::string &args = "") : random_agent("name=dummy role=player " + args),
+												 opcode({0, 1, 2, 3}) {}
 
-	action dummy_action(const board& before) {
+	action dummy_action(const board &before)
+	{
 		std::shuffle(opcode.begin(), opcode.end(), engine);
-		for (int op : opcode) {
+		for (int op : opcode)
+		{
 			board::reward reward = board(before).slide(op);
-			if (reward != -1) return action::slide(op);
+			if (reward != -1)
+				return action::slide(op);
 		}
 		return action();
 	}
 
-	action greedy_score_action(const board& before) {
+	action greedy_score_action(const board &before)
+	{
 		board::reward best_reward = -1;
 		int best_op;
-		for (int op : opcode) {
+		for (int op : opcode)
+		{
 			board::reward reward = board(before).slide(op);
-			if(reward > best_reward) {
+			if (reward > best_reward)
+			{
 				best_op = op;
 				best_reward = reward;
 			}
 		}
-		if (best_reward != -1) return action::slide(best_op);
+		if (best_reward != -1)
+			return action::slide(best_op);
 		return action();
 	}
 
-	action greedy_pos_action(const board& before) {
+	action greedy_pos_action(const board &before)
+	{
 		board::reward best_reward = -1;
 		unsigned best_space = 17;
 		int best_op;
-		for (int op : opcode) {
+		for (int op : opcode)
+		{
 			board tmp(before);
 			board::reward reward = tmp.slide(op);
-			if(reward == -1)
+			if (reward == -1)
 				continue;
 			unsigned space_left = tmp.space_left();
-			if(reward > best_reward || (reward == best_reward && space_left < best_space)) {
+			if (reward > best_reward || (reward == best_reward && space_left < best_space))
+			{
 				best_op = op;
 				best_reward = reward;
 				best_space = space_left;
 			}
 		}
-		if (best_reward != -1) return action::slide(best_op);
+		if (best_reward != -1)
+			return action::slide(best_op);
 		return action();
 	}
 
-	virtual action take_action(const board& before) {
+	virtual action take_action(const board &before)
+	{
 		if (property("name") == "greedy_score")
 			return greedy_score_action(before);
 		else if (property("name") == "greedy_pos")
