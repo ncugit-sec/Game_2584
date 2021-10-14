@@ -39,6 +39,17 @@ To load and review the statistic result from a file:
 ./2584 --load=stat.txt
 ```
 
+
+To specify the agent name:
+```bash
+./2584 --play="name=dummy" # need to inherit from random_agent
+```
+valid player name: 
+- dummy
+- greedy_score
+- greedy_pos
+- TD
+
 ## Advanced Usage
 
 To initialize the network, train the network for 100000 games, and save the weights to a file:

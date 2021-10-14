@@ -32,6 +32,12 @@ public:
 			std::string value = pair.substr(pair.find('=') + 1);
 			meta[key] = {value};
 		}
+		for (std::map<key, value>::const_iterator it = meta.begin();
+			 it != meta.end(); ++it)
+		{
+			std::cout << it->first << "=" << it->second.value << ";";
+		}
+		std::cout << std::endl;
 	}
 	virtual ~agent() {}
 	virtual void open_episode(const std::string &flag = "") {}
@@ -77,11 +83,11 @@ protected:
 /**
  * base agent for agents with weight tables and a learning rate
  */
-class player : public agent
+class player : public random_agent
 {
 
 public:
-	player(const std::string &args = "") : agent("name=TD alpha=0.125 role=player " + args), alpha(0)
+	player(const std::string &args = "") : random_agent("name=TD alpha=0.005 role=player " + args), alpha(0), opcode({0, 1, 2, 3})
 	{
 		if (meta.find("init") != meta.end())
 			init_weights(meta["init"]);
@@ -115,12 +121,12 @@ public:
 	}
 
 protected:
+	// TD / n-tuple
 	struct step
 	{
 		int reward;
 		board after;
 	};
-
 	std::vector<step> history;
 	static const int indexCount = 17;
 	static const int tupleSize = 4;
@@ -192,13 +198,13 @@ protected:
 			net[x][extract_feature(after, x)] += adjust;
 	}
 
-	virtual action take_action(const board &before)
+	action td_nTuple_action(const board &before)
 	{
 		int best_op = -1;
 		int best_reward = -1;
 		float best_value = -100000;
 		board best_afterstate;
-		for (int op : {0, 1, 2, 3})
+		for (int op : opcode)
 		{
 			board after = before;
 			int reward = after.slide(op);
@@ -214,86 +220,13 @@ protected:
 			}
 		}
 		if (best_op != -1)
-		{
 			history.push_back({best_reward, best_afterstate});
-		}
+		else
+			return action();
 		return action::slide(best_op);
 	}
 
-	virtual void init_weights(const std::string &info)
-	{
-		for (int i = 0; i < indexCount; i++)
-			net.emplace_back(pow(maxIndex, tupleSize));
-	}
-	virtual void load_weights(const std::string &path)
-	{
-		std::ifstream in(path, std::ios::in | std::ios::binary);
-		if (!in.is_open())
-			std::exit(-1);
-		uint32_t size;
-		in.read(reinterpret_cast<char *>(&size), sizeof(size));
-		net.resize(size);
-		for (weight &w : net)
-			in >> w;
-		in.close();
-	}
-	virtual void save_weights(const std::string &path)
-	{
-		std::ofstream out(path, std::ios::out | std::ios::binary | std::ios::trunc);
-		if (!out.is_open())
-			std::exit(-1);
-		uint32_t size = net.size();
-		out.write(reinterpret_cast<char *>(&size), sizeof(size));
-		for (weight &w : net)
-			out << w;
-		out.close();
-	}
-
-protected:
-	std::vector<weight> net;
-	float alpha;
-};
-
-/**
- * random environment
- * add a new random tile to an empty cell
- * 2-tile: 90%
- * 4-tile: 10%
- */
-class rndenv : public random_agent
-{
-public:
-	rndenv(const std::string &args = "") : random_agent("name=random role=environment " + args),
-										   space({0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}), popup(0, 9) {}
-
-	virtual action take_action(const board &after)
-	{
-		std::shuffle(space.begin(), space.end(), engine);
-		for (int pos : space)
-		{
-			if (after(pos) != 0)
-				continue;
-			board::cell tile = popup(engine) ? 1 : 2;
-			return action::place(pos, tile);
-		}
-		return action();
-	}
-
-private:
-	std::array<int, 16> space;
-	std::uniform_int_distribution<int> popup;
-};
-
-/**
- * dummy player
- * select a legal action randomly
- */
-class dummy_player : public random_agent
-{
-public:
-	dummy_player(const std::string &args = "") : random_agent("name=dummy role=player " + args),
-												 opcode({0, 1, 2, 3}) {}
-
+	// baseline models
 	action dummy_action(const board &before)
 	{
 		std::shuffle(opcode.begin(), opcode.end(), engine);
@@ -354,9 +287,75 @@ public:
 			return greedy_score_action(before);
 		else if (property("name") == "greedy_pos")
 			return greedy_pos_action(before);
-		return dummy_action(before);
+		else if (property("name") == "TD")
+			return td_nTuple_action(before);
+		else if (property("name") == "dummy")
+			return dummy_action(before);
+		else
+			throw std::invalid_argument(property("name") + " is not a valid player name");
+	}
+
+	virtual void init_weights(const std::string &info)
+	{
+		for (int i = 0; i < indexCount; i++)
+			net.emplace_back(pow(maxIndex, tupleSize));
+	}
+	virtual void load_weights(const std::string &path)
+	{
+		std::ifstream in(path, std::ios::in | std::ios::binary);
+		if (!in.is_open())
+			std::exit(-1);
+		uint32_t size;
+		in.read(reinterpret_cast<char *>(&size), sizeof(size));
+		net.resize(size);
+		for (weight &w : net)
+			in >> w;
+		in.close();
+	}
+	virtual void save_weights(const std::string &path)
+	{
+		std::ofstream out(path, std::ios::out | std::ios::binary | std::ios::trunc);
+		if (!out.is_open())
+			std::exit(-1);
+		uint32_t size = net.size();
+		out.write(reinterpret_cast<char *>(&size), sizeof(size));
+		for (weight &w : net)
+			out << w;
+		out.close();
 	}
 
 private:
+	float alpha;
 	std::array<int, 4> opcode;
+	std::vector<weight> net;
+};
+
+/**
+ * random environment
+ * add a new random tile to an empty cell
+ * 2-tile: 90%
+ * 4-tile: 10%
+ */
+class rndenv : public random_agent
+{
+public:
+	rndenv(const std::string &args = "") : random_agent("name=random role=environment " + args),
+										   space({0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 14, 15}), popup(0, 9) {}
+
+	virtual action take_action(const board &after)
+	{
+		std::shuffle(space.begin(), space.end(), engine);
+		for (int pos : space)
+		{
+			if (after(pos) != 0)
+				continue;
+			board::cell tile = popup(engine) ? 1 : 2;
+			return action::place(pos, tile);
+		}
+		return action();
+	}
+
+private:
+	std::array<int, 16> space;
+	std::uniform_int_distribution<int> popup;
 };
